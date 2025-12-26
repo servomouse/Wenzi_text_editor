@@ -1,9 +1,11 @@
 #include <windows.h>
 #include <stdio.h>
 
-#define WINDOW_WIDTH 400
-#define WINDOW_HEIGHT 400
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 800
 #define DRAWING_AREA_WIDTH 100
+#define MAX_ARGS 10
+#define ARG_LENGTH 100
 
 void CreateConsole() {
     AllocConsole();
@@ -22,8 +24,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK DrawingAreaProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
+void handle_arguments(char *cmdline_args) {
+    char* arguments[MAX_ARGS];
+    int argCount = 0;
+
+    // Tokenize the command line arguments
+    char* token = strtok(cmdline_args, " ");
+    while (token != NULL && argCount < MAX_ARGS) {
+        arguments[argCount++] = token;
+        token = strtok(NULL, " ");
+    }
+
+    for (int i = 0; i < argCount; i++) {
+        printf("Argument %d: %s\n", i + 1, arguments[i]);
+    }
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // lpCmdLine is all the command line arguments as a single string
     CreateConsole();
+    
+    handle_arguments(lpCmdLine);
 
     const char CLASS_NAME[] = "Sample Window Class";
     const char DRAWING_CLASS_NAME[] = "Drawing Area Class";
