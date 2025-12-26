@@ -3,6 +3,7 @@
 
 #define WINDOW_WIDTH 400
 #define WINDOW_HEIGHT 400
+#define DRAWING_AREA_WIDTH 100
 
 void CreateConsole() {
     AllocConsole();
@@ -13,23 +14,33 @@ void CreateConsole() {
 
 // Global variable for the text field
 HWND hTextField;
-WNDPROC oldEditProc; // Store the old procedure
+WNDPROC editProc; // Store the old procedure
+HWND hDrawingArea;
 
 // Function declarations
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK DrawingAreaProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     CreateConsole();
 
     const char CLASS_NAME[] = "Sample Window Class";
+    const char DRAWING_CLASS_NAME[] = "Drawing Area Class";
 
+    // Register main window class
     WNDCLASS wc = {0};
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
-
     RegisterClass(&wc);
+    
+    // Register drawing area class
+    WNDCLASS wcDrawing = {0};
+    wcDrawing.lpfnWndProc = DrawingAreaProc;
+    wcDrawing.hInstance = hInstance;
+    wcDrawing.lpszClassName = DRAWING_CLASS_NAME;
+    RegisterClass(&wcDrawing);
 
     HWND hwnd = CreateWindowEx(
         0,
@@ -60,11 +71,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         NULL
     );
 
+    // Create the drawing area as a separate window
+    hDrawingArea = CreateWindowEx(
+        0,
+        DRAWING_CLASS_NAME,
+        "Drawing Area",
+        WS_CHILD | WS_VISIBLE | WS_BORDER,
+        WINDOW_WIDTH - DRAWING_AREA_WIDTH, 0, DRAWING_AREA_WIDTH, WINDOW_HEIGHT,
+        hwnd,
+        NULL,
+        hInstance,
+        NULL
+    );
+
     // Set default text in the text field
     SetWindowText(hTextField, "Welcome! Type your text here...");
 
     // Subclass the EDIT control
-    oldEditProc = (WNDPROC)SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)EditSubclassProc);
+    editProc = (WNDPROC)SetWindowLongPtr(hTextField, GWLP_WNDPROC, (LONG_PTR)EditSubclassProc);
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
@@ -126,23 +150,7 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
     }
 
     // Call the original procedure for default processing
-    return CallWindowProc(oldEditProc, hwnd, uMsg, wParam, lParam);
-}
-
-void DrawShapes(HDC hdc) {
-    // Set drawing color
-    SelectObject(hdc, GetStockObject(BLACK_BRUSH));
-    SelectObject(hdc, GetStockObject(BLACK_PEN));
-
-    // Draw a line
-    MoveToEx(hdc, 10, 10, NULL);
-    LineTo(hdc, 300, 10);
-
-    // Draw a rectangle
-    Rectangle(hdc, 50, 20, 350, 100);
-
-    // Draw an ellipse
-    Ellipse(hdc, 100, 120, 300, 220);
+    return CallWindowProc(editProc, hwnd, uMsg, wParam, lParam);
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -156,16 +164,45 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         if (hTextField) {
             RECT rect;
             GetClientRect(hwnd, &rect);
-            MoveWindow(hTextField, 0, 0, rect.right, rect.bottom, TRUE);
+                MoveWindow(hTextField, 0, 0, rect.right - DRAWING_AREA_WIDTH, rect.bottom, TRUE);
+            // Update the sidebar
+            if (hDrawingArea) {
+                MoveWindow(hDrawingArea, rect.right - DRAWING_AREA_WIDTH, 0, DRAWING_AREA_WIDTH, rect.bottom, TRUE);
+            }
         }
-    }
-    if (uMsg == WM_PAINT) {
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hwnd, &ps);
-        DrawShapes(hdc);
-        EndPaint(hwnd, &ps);
     }
 
     // Call the default handler for other messages
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+LRESULT CALLBACK DrawingAreaProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+
+            // Set the background color of the drawing area
+            HBRUSH brush = CreateSolidBrush(RGB(240, 240, 240)); // Light gray background
+            FillRect(hdc, &ps.rcPaint, brush);
+            DeleteObject(brush);
+
+            MoveToEx(hdc, 10, 10, NULL);
+            LineTo(hdc, 90, 10);    // Draw a line
+
+            Rectangle(hdc, 10, 30, 90, 110);    // Draw a rectangle
+
+            Ellipse(hdc, 10, 120, 90, 200); // Draw an ellipse
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_DESTROY: {
+            PostQuitMessage(0);
+            return 0;
+        }
+    }
+
+    // Call default procedure for unhandled messages
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
