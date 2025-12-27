@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
@@ -14,12 +15,61 @@ void CreateConsole() {
     freopen_s(&fp, "CONIN$", "r", stdin);
 }
 
-// Global variable for the text field
+typedef struct {
+    char *text_buffer;
+    char *current_screen;
+    uint32_t current_string;    // The string that appears at the top of the current screen
+    uint32_t cursor_row;
+    uint32_t cursor_column;
+} text_buffer_t;
+
+void update_text_field(void) {
+
+}
+
+int GetCurrentCursorPosition() {
+    return GetWindowTextLength(hTextField) - GetSelStart();
+}
+
+int GetSelStart() {
+    LONG_PTR selStart = SendMessage(hTextField, EM_GETSEL, 0, 0);
+    return (int)(selStart & 0xFFFF); // Extract the selection start
+}
+
+void SetCursorPosition(int position) {
+    // Ensure the position is within bounds
+    int textLength = GetWindowTextLength(hTextField);
+    if (position < 0) position = 0;
+    if (position > textLength) position = textLength;
+
+    SendMessage(hTextField, EM_SETSEL, position, position); // Set cursor position
+}
+
+void GetTextFieldSize(int *widthInSymbols, int *heightInSymbols) {
+    RECT rect;
+    GetClientRect(hTextField, &rect);
+    
+    // Assuming an average character width and height:
+    HDC hdc = GetDC(hTextField);
+    TEXTMETRICW tm;
+    int avgCharWidth = GetTextMetrics(hdc, &tm);
+    int avgCharHeight = tm.tmHeight;
+    ReleaseDC(hTextField, hdc);
+    
+    *widthInSymbols = rect.right / avgCharWidth;
+    *heightInSymbols = rect.bottom / avgCharHeight;
+}
+
+int GetDrawingAreaHeight() {
+    RECT rect;
+    GetClientRect(hDrawingArea, &rect);
+    return rect.bottom - rect.top; // Return the height in pixels
+}
+
 HWND hTextField;
-WNDPROC editProc; // Store the old procedure
+WNDPROC editProc;
 HWND hDrawingArea;
 
-// Function declarations
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK DrawingAreaProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -131,11 +181,12 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
             // Detect Ctrl + C
             if (wParam == 'C') {
                 printf("Ctrl+C detected\n");
-                
+                SetWindowText(hTextField, "Ctrl+C detected");
                 return 0; // Prevent default handling
             }
         }
         // Print the virtual key code to the console
+        SetWindowText(hTextField, "Key pressed in text field");
         printf("Key pressed in text field: %d\n", wParam);
     } else if (uMsg == WM_LBUTTONDOWN) {
         // Handle left mouse button clicks
