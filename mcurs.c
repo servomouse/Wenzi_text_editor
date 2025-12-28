@@ -14,6 +14,8 @@ typedef struct {
 char textBuffer[BUFFER_SIZE]; // Simple text buffer
 Cursor cursors[MAX_CURSORS]; // Array to store cursor positions
 int cursorCount = 1; // Start with one cursor at position 0
+int cursorVisible = 1; // 1 for visible, 0 for hidden
+#define ID_CURSOR_TIMER 1
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void DrawTextWithCursors(HDC hdc);
@@ -26,6 +28,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 
     RegisterClass(&wc);
 
@@ -44,6 +47,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (hwnd == NULL) {
         return 0;
     }
+    SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
@@ -83,12 +87,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             EndPaint(hwnd, &ps);
             return 0;
         }
+        case WM_TIMER: {
+            if (wParam == ID_CURSOR_TIMER) {
+                cursorVisible = !cursorVisible; // Toggle visibility
+                InvalidateRect(hwnd, NULL, TRUE); // Trigger a repaint
+            }
+            return 0;
+        }
 
         case WM_CHAR: {
             if (wParam >= 32 && wParam <= 126) { // ASCII range for printable characters
+                cursorVisible = 1; // Force cursor to show immediately when typing
                 char character = (char)wParam;
                 InsertTextAtCursor(character);
                 InvalidateRect(hwnd, NULL, TRUE);
+                // Optional: Reset timer here so it doesn't blink out mid-type
+                SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
             }
             break;
         }
@@ -122,11 +136,15 @@ void DrawTextWithCursors(HDC hdc) {
     TEXTMETRIC tm;
     GetTextMetrics(hdc, &tm);
 
-    int startX = 50;
+    int startX = 10;
     int startY = 10;
     
     // Draw the current text
     TextOut(hdc, startX, startY, textBuffer, (int)strlen(textBuffer));
+
+    if (!cursorVisible) {
+        return;
+    }
 
     // Draw cursors
     for (int i = 0; i < cursorCount; i++) {
