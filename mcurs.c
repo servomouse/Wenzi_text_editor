@@ -311,3 +311,37 @@ void change_font_size(HWND hwnd, int delta) {
     update_editor_font();
     InvalidateRect(hwnd, NULL, FALSE);
 }
+
+BOOL file_exists(LPCTSTR f_path)
+{
+    DWORD dwAttrib = GetFileAttributes(f_path);
+
+    // Check if the call failed AND the specific error was "file not found"
+    if (dwAttrib == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND) {
+        return FALSE; // File does not exist
+    }
+    
+    // Additional check to ensure it's not a directory if needed
+    // return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+
+    return TRUE; // File exists (or is a directory/some other object)
+}
+
+void open_file(char *f_path) {
+    HANDLE hFile = CreateFile(
+        f_path,
+        GENERIC_READ,         // Desired access (read)
+        FILE_SHARE_READ,      // Share mode
+        NULL,                 // Security attributes
+        OPEN_EXISTING,        // Creation disposition
+        FILE_ATTRIBUTE_NORMAL,// Flags and attributes
+        NULL                  // Template file
+    );
+
+    if (hFile == INVALID_HANDLE_VALUE) {
+        // Handle error, e.g., using GetLastError()
+        printf("Error opening file with CreateFile\n");
+    }
+    // Use ReadFile() and WriteFile()
+    CloseHandle(hFile);
+}
