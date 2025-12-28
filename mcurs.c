@@ -50,6 +50,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     // Initialize text buffer
     strcpy(textBuffer, "Edit your text here...");
+    cursors[0].position = 5;    // strlen(textBuffer); // Set first cursor to the end
+    cursorCount = 1;
+
+    // Update window to show the text
+    InvalidateRect(hwnd, NULL, TRUE); // Tells Windows the window needs a refresh
+    UpdateWindow(hwnd);               // Forces an immediate WM_PAINT message
 
     // Message loop
     MSG msg;
@@ -78,7 +84,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
 
-        case WM_KEYDOWN: {
+        case WM_CHAR: {
             if (wParam >= 32 && wParam <= 126) { // ASCII range for printable characters
                 char character = (char)wParam;
                 InsertTextAtCursor(character);
@@ -113,13 +119,29 @@ void InsertTextAtCursor(char character) {
 }
 
 void DrawTextWithCursors(HDC hdc) {
+    TEXTMETRIC tm;
+    GetTextMetrics(hdc, &tm);
+
+    int startX = 50;
+    int startY = 10;
+    
     // Draw the current text
-    TextOut(hdc, 10, 10, textBuffer, strlen(textBuffer));
+    TextOut(hdc, startX, startY, textBuffer, (int)strlen(textBuffer));
 
     // Draw cursors
     for (int i = 0; i < cursorCount; i++) {
-        int cursorX = 10 + cursors[i].position * 10; // Placeholder for actual cursor position
-        MoveToEx(hdc, cursorX, 10, NULL);
-        LineTo(hdc, cursorX, 20); // Drawing cursor as a vertical line
+        SIZE size;
+        int pos = cursors[i].position;
+
+        // Measure width up to the cursor
+        GetTextExtentPoint32(hdc, textBuffer, pos, &size);
+
+        int cursorX = startX + size.cx;
+        
+        // Use the font metrics for the Y coordinates:
+        // Top: startY
+        // Bottom: startY + height of the font
+        MoveToEx(hdc, cursorX, startY, NULL);
+        LineTo(hdc, cursorX, startY + tm.tmHeight); 
     }
 }
