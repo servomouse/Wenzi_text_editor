@@ -9,6 +9,8 @@
 #define BUFFER_SIZE 1024
 #define ID_CURSOR_TIMER 1
 #define MINIMAP_WIDTH 100
+#define MAX_ARGS 10
+#define ARG_LENGTH 100
 
 // TODO: Add Gutter
 
@@ -36,7 +38,34 @@ window_layout_t get_editor_layout(HWND hwnd);
 void update_editor_font(void);
 void change_font_size(HWND hwnd, int delta);
 
+void CreateConsole() {
+    AllocConsole();
+    FILE* fp;
+    freopen_s(&fp, "CONOUT$", "w", stdout);
+    freopen_s(&fp, "CONIN$", "r", stdin);
+}
+
+void handle_arguments(char *cmdline_args) {
+    char* arguments[MAX_ARGS];
+    int argCount = 0;
+
+    // Tokenize the command line arguments
+    char* token = strtok(cmdline_args, " ");
+    while (token != NULL && argCount < MAX_ARGS) {
+        arguments[argCount++] = token;
+        token = strtok(NULL, " ");
+    }
+
+    for (int i = 0; i < argCount; i++) {
+        printf("Argument %d: %s\n", i + 1, arguments[i]);
+    }
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // lpCmdLine is all the command line arguments as a single string
+    CreateConsole();
+    
+    handle_arguments(lpCmdLine);
     const char CLASS_NAME[] = "CustomTextEditor";
 
     WNDCLASS wc = {0};
