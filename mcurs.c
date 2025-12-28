@@ -17,18 +17,10 @@ typedef struct {
 } Cursor;
 
 typedef struct {
-    enum { PIX_TYPE, SYM_TYPE } type;
-    union {
-        struct {
-            uint32_t width;
-            uint32_t height;
-        } px;
-        struct {
-            uint32_t width;
-            uint32_t height;
-        } sym;
-    } dim;
-} window_size_t;
+    int win_width_px, win_height_px;
+    int win_width_char, win_height_char;
+    int char_width, char_height;
+} window_layout_t;
 
 char textBuffer[BUFFER_SIZE]; // Simple text buffer
 Cursor cursors[MAX_CURSORS]; // Array to store cursor positions
@@ -40,8 +32,7 @@ int fontSize = 20; // Default height in pixels
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void DrawTextWithCursors(HDC hdc);
 void InsertTextAtCursor(char character);
-window_size_t get_window_size_px(HWND hwnd);
-window_size_t get_window_size_sym(HWND hwnd);
+window_layout_t get_editor_layout(HWND hwnd);
 void update_editor_font(void);
 void change_font_size(HWND hwnd, int delta);
 
@@ -242,49 +233,26 @@ void DrawTextWithCursors(HDC hdc) {
     SelectObject(hdc, hOldFont);
 }
 
-window_size_t get_window_size_px(HWND hwnd) {
+window_layout_t get_editor_layout(HWND hwnd) {
+    window_layout_t layout;
     RECT rect;
     GetClientRect(hwnd, &rect);
-    int px_width = rect.right - rect.left;
-    int px_height = rect.bottom - rect.top;
-    window_size_t wsize = {
-        .type = PIX_TYPE,
-        .dim = {
-            .px = {
-                .width = px_width,
-                .height = px_height
-            }
-        }
-    };
-    return wsize;
-}
+    layout.win_width_px = rect.right - rect.left;
+    layout.win_height_px = rect.bottom - rect.top;
 
-window_size_t get_window_size_sym(HWND hwnd) {
-    RECT rect;
-    GetClientRect(hwnd, &rect);
-    
     HDC hdc = GetDC(hwnd);
     HFONT hOldFont = (HFONT)SelectObject(hdc, hEditorFont);
-
     TEXTMETRIC tm;
     GetTextMetrics(hdc, &tm);
     
-    // tmAveCharWidth is the width of a character in a monospaced font
-    uint32_t char_width = (rect.right - rect.left) / tm.tmAveCharWidth;
-    uint32_t char_height = (rect.bottom - rect.top) / tm.tmHeight;
+    layout.char_width = tm.tmAveCharWidth;
+    layout.char_height = tm.tmHeight;
+    layout.win_width_char = layout.win_width_px / tm.tmAveCharWidth;
+    layout.win_height_char = layout.win_height_px / tm.tmHeight;
 
     SelectObject(hdc, hOldFont);
     ReleaseDC(hwnd, hdc);
-    window_size_t wsize = {
-        .type = SYM_TYPE,
-        .dim = {
-            .sym = {
-                .width = char_width,
-                .height = char_height
-            }
-        }
-    };
-    return wsize;
+    return layout;
 }
 
 void update_editor_font(void) {
