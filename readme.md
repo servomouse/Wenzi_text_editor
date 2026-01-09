@@ -1,0 +1,1 @@
+build: gcc mcurs.c -mwindows -o app.exe
