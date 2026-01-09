@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <windowsx.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -119,100 +120,139 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     return 0;
 }
 
+LRESULT wm_destroy_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (hEditorFont)
+        DeleteObject(hEditorFont);
+    PostQuitMessage(0);
+    return 0;
+}
+
+LRESULT wm_paint_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(hwnd, &ps);
+
+    // 1. Get dimensions
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    int width = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+
+    // 2. Create the "Invisible Canvas" (Back Buffer)
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBitmap = CreateCompatibleBitmap(hdc, width, height);
+    SelectObject(memDC, memBitmap);
+
+    // 3. Clear the background on the memDC
+    HBRUSH hBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    FillRect(memDC, &rect, hBackground);
+
+    // 4. Draw the Minimap on the memDC
+    RECT sidebarRect = { rect.right - 100, 0, rect.right, rect.bottom };
+    HBRUSH hSidebarBrush = CreateSolidBrush(RGB(240, 240, 240));
+    FillRect(memDC, &sidebarRect, hSidebarBrush);
+    DeleteObject(hSidebarBrush);
+
+    // 5. Draw the Text and Cursors on the memDC
+    // (Update DrawTextWithCursors to accept the DC it should draw on)
+    DrawTextWithCursors(memDC);
+
+    // 6. "Flip" the buffer: Copy from memory to the screen
+    BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
+
+    // 7. Cleanup
+    DeleteObject(memBitmap);
+    DeleteDC(memDC);
+    EndPaint(hwnd, &ps);
+    return 0;
+}
+
+LRESULT wm_timer_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (wParam == ID_CURSOR_TIMER) {
+        cursorVisible = !cursorVisible; // Toggle visibility
+        InvalidateRect(hwnd, NULL, FALSE); // Trigger a repaint
+    }
+    return 0;
+}
+
+LRESULT wm_setcursor_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    // loword of lParam tells us where the mouse is hitting (HTCLIENT means inside the window)
+    if (LOWORD(lParam) == HTCLIENT) {
+        POINT pt;
+        GetCursorPos(&pt);           // Get screen coordinates
+        ScreenToClient(hwnd, &pt);   // Convert to window coordinates
+
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+
+        // Check if mouse is over the Minimap
+        if (pt.x >= rect.right - MINIMAP_WIDTH) {
+            SetCursor(LoadCursor(NULL, IDC_ARROW));
+        } else {
+            SetCursor(LoadCursor(NULL, IDC_IBEAM));
+        }
+        return 1; // Tell Windows we handled the cursor
+    }
+    return 0;
+}
+
+LRESULT wm_char_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (wParam >= 32 && wParam <= 126) { // ASCII range for printable characters
+        cursorVisible = 1; // Force cursor to show immediately when typing
+        char character = (char)wParam;
+        InsertTextAtCursor(character);
+        InvalidateRect(hwnd, NULL, FALSE);
+        // Optional: Reset timer here so it doesn't blink out mid-type
+        SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
+        return 1;
+    }
+    return 0;
+}
+
+LRESULT wm_erasebkgnd_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    return 1; // Tell Windows "I've handled erasing", even though we do nothing.
+}
+
+LRESULT wm_lbuttondown_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    POINT pt = {LOWORD(lParam), HIWORD(lParam)};
+    int xPos = GET_X_LPARAM(lParam);
+    int yPos = GET_Y_LPARAM(lParam);
+    // For simplicity, set cursor to the end of the text
+    if (cursorCount < MAX_CURSORS) {
+        cursors[cursorCount++].position = strlen(textBuffer); // Simple click handler
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
+    printf("Cursor coords: (x = %d, y = %d)\n", xPos, yPos);
+    return 1;
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_DESTROY: {
-            if (hEditorFont)
-                DeleteObject(hEditorFont);
-            PostQuitMessage(0);
-            return 0;
+            return wm_destroy_cb(hwnd, uMsg, wParam, lParam);
         }
         case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-
-            // 1. Get dimensions
-            RECT rect;
-            GetClientRect(hwnd, &rect);
-            int width = rect.right - rect.left;
-            int height = rect.bottom - rect.top;
-
-            // 2. Create the "Invisible Canvas" (Back Buffer)
-            HDC memDC = CreateCompatibleDC(hdc);
-            HBITMAP memBitmap = CreateCompatibleBitmap(hdc, width, height);
-            SelectObject(memDC, memBitmap);
-
-            // 3. Clear the background on the memDC
-            HBRUSH hBackground = (HBRUSH)(COLOR_WINDOW + 1);
-            FillRect(memDC, &rect, hBackground);
-
-            // 4. Draw the Minimap on the memDC
-            RECT sidebarRect = { rect.right - 100, 0, rect.right, rect.bottom };
-            HBRUSH hSidebarBrush = CreateSolidBrush(RGB(240, 240, 240));
-            FillRect(memDC, &sidebarRect, hSidebarBrush);
-            DeleteObject(hSidebarBrush);
-
-            // 5. Draw the Text and Cursors on the memDC
-            // (Update DrawTextWithCursors to accept the DC it should draw on)
-            DrawTextWithCursors(memDC);
-
-            // 6. "Flip" the buffer: Copy from memory to the screen
-            BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
-
-            // 7. Cleanup
-            DeleteObject(memBitmap);
-            DeleteDC(memDC);
-            EndPaint(hwnd, &ps);
-            return 0;
+            return wm_paint_cb(hwnd, uMsg, wParam, lParam);
         }
         case WM_TIMER: {
-            if (wParam == ID_CURSOR_TIMER) {
-                cursorVisible = !cursorVisible; // Toggle visibility
-                InvalidateRect(hwnd, NULL, FALSE); // Trigger a repaint
-            }
-            return 0;
+            return wm_timer_cb(hwnd, uMsg, wParam, lParam);
         }
         case WM_SETCURSOR: {
-            // loword of lParam tells us where the mouse is hitting (HTCLIENT means inside the window)
-            if (LOWORD(lParam) == HTCLIENT) {
-                POINT pt;
-                GetCursorPos(&pt);           // Get screen coordinates
-                ScreenToClient(hwnd, &pt);   // Convert to window coordinates
-
-                RECT rect;
-                GetClientRect(hwnd, &rect);
-
-                // Check if mouse is over the Minimap
-                if (pt.x >= rect.right - MINIMAP_WIDTH) {
-                    SetCursor(LoadCursor(NULL, IDC_ARROW));
-                } else {
-                    SetCursor(LoadCursor(NULL, IDC_IBEAM));
-                }
-                return TRUE; // Tell Windows we handled the cursor
+            if (wm_setcursor_cb(hwnd, uMsg, wParam, lParam)) {
+                return 1;
             }
             break;
         }
         case WM_CHAR: {
-            if (wParam >= 32 && wParam <= 126) { // ASCII range for printable characters
-                cursorVisible = 1; // Force cursor to show immediately when typing
-                char character = (char)wParam;
-                InsertTextAtCursor(character);
-                InvalidateRect(hwnd, NULL, FALSE);
-                // Optional: Reset timer here so it doesn't blink out mid-type
-                SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
+            if (wm_char_cb(hwnd, uMsg, wParam, lParam)) {
+                return 1;
             }
             break;
         }
-        case WM_ERASEBKGND:
-            return 1; // Tell Windows "I've handled erasing", even though we do nothing.
+        case WM_ERASEBKGND: {
+            return wm_erasebkgnd_cb(hwnd, uMsg, wParam, lParam);
+        }
         case WM_LBUTTONDOWN: {
-            POINT pt = {LOWORD(lParam), HIWORD(lParam)};
-            // For simplicity, set cursor to the end of the text
-            if (cursorCount < MAX_CURSORS) {
-                cursors[cursorCount++].position = strlen(textBuffer); // Simple click handler
-                InvalidateRect(hwnd, NULL, FALSE);
-            }
-            break;
+            return wm_lbuttondown_cb(hwnd, uMsg, wParam, lParam);
         }
     }
 
