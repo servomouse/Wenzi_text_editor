@@ -2,26 +2,37 @@
 
 #include <stdint.h>
 
-typedef struct {
-    char *line;
-    struct line_t *next;
-} line_t;
+/* Operations:
+ * - Insert one or multiple characters
+ * - Insert text with new lines (increase the amount of strings)
+ * - Delete one or several characters
+ * - Delete some text with new lines (decrease the amount of strings)
+*/
 
 typedef struct {
-    uint32_t row;
-    uint32_t column;
-    struct cursor_t *next;
-} cursor_t;
+    char *buf;
+    struct lines {
+        uint32_t fln;   // First line number
+        uint32_t nl;    // Num lines
+        uint32_t offsets[256];
+    };
+    uint32_t allocated_size;
+    struct line_node_t *next;
+} line_node_t;
 
 typedef struct {
-    char *name;
-    line_t *text;
-    uint32_t current_string;    // The idx of the string that appears at the top of the current screen
-    uint32_t cursor_row;
-    uint32_t cursor_column;
+    line_node_t *first_node;
+    uint32_t num_nodes;
+    uint32_t line_range[2];
+    struct group_node_t *next;
+} group_node_t;
+
+typedef struct {
+    char *filaname;
+    char *path;
     uint32_t id;
-    int on_disk;
-    struct text_buffer_t *next;
+    uint32_t flags;
+    group_node_t *root_node;
 } text_buffer_t;
 
 void set_current_buf(uint32_t id);
