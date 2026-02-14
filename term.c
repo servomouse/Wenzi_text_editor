@@ -219,7 +219,10 @@ LRESULT wm_lbuttondown_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     int xPos = GET_X_LPARAM(lParam);
     int yPos = GET_Y_LPARAM(lParam);
     InvalidateRect(hwnd, NULL, FALSE);
-    printf("Cursor coords: (x = %d, y = %d)\n", xPos, yPos);
+    printf("Cursor coords: (x = %d, y = %d) (xc = %d, yc = %d), cw = %d, ch = %d\n",
+            xPos, yPos,
+            xPos / window_layout.char_width_px, yPos / window_layout.char_height_px,
+            window_layout.char_width_px, window_layout.char_height_px);
     return 1;
 }
 
@@ -265,11 +268,9 @@ void draw_text(HDC hdc) {
     GetTextMetrics(hdc, &tm);
 
     int text_height = tm.tmHeight;
-    int text_left_offset = 10;
-    int text_top_offset = 10;
-    
-    int startX = 10;
-    int startY = 10;
+    int text_left_offset = window_layout.char_width_px;
+    int text_top_offset = window_layout.char_height_px;
+
     int win_height = window_layout.win_height_char;
     int win_width = window_layout.win_width_char;
     printf("Text height: %d px, window height: %d lines, window width: %d lines\n", text_height, win_height, win_width);
