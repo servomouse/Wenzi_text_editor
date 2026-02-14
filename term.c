@@ -1,9 +1,10 @@
+// Build: gcc term.c -o app.exe -mwindows -mconsole
 #include <windows.h>
 #include <windowsx.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#include "core.h"
+
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
@@ -21,9 +22,12 @@ typedef struct {
 } Cursor;
 
 typedef struct {
-    int win_width_px, win_height_px;
-    int win_width_char, win_height_char;
-    int char_width, char_height;
+    int win_width_px;
+    int win_height_px;
+    int win_width_char;
+    int win_height_char;
+    int char_width_px;
+    int char_height_px;
 } window_layout_t;
 
 char textBuffer[BUFFER_SIZE]; // Simple text buffer
@@ -32,11 +36,13 @@ int cursorCount = 1; // Start with one cursor at position 0
 int cursorVisible = 1; // 1 for visible, 0 for hidden
 HFONT hEditorFont = NULL;
 int fontSize = 20; // Default height in pixels
+window_layout_t window_layout;
+int cursor_active = 0;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void DrawTextWithCursors(HDC hdc);
-void InsertTextAtCursor(char character);
-window_layout_t get_editor_layout(HWND hwnd);
+// void InsertTextAtCursor(char character);
+void update_editor_layout(HWND hwnd);
 void update_editor_font(void);
 void change_font_size(HWND hwnd, int delta);
 
@@ -76,7 +82,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpszClassName = CLASS_NAME;
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.hCursor = NULL;  // Don't try to set a default cursor; I will handle it manually
+    wc.hCursor = NULL;  // Don't set a default cursor; will handle it manually
 
     RegisterClass(&wc);
 
@@ -93,7 +99,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     );
 
     if (hwnd == NULL) {
-        return 0;
+        return -1;
     }
     update_editor_font();
     SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
@@ -103,8 +109,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     // Initialize text buffer
     strcpy(textBuffer, "Edit your text here...");
-    cursors[0].position = 5;    // strlen(textBuffer); // Set first cursor to the end
-    cursorCount = 1;
+    // cursors[0].position = 5;    // Set first cursor to the end
+    // cursorCount = 1;
 
     // Update window to show the text
     InvalidateRect(hwnd, NULL, TRUE); // Tells Windows the window needs a refresh
@@ -147,10 +153,10 @@ LRESULT wm_paint_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     FillRect(memDC, &rect, hBackground);
 
     // 4. Draw the Minimap on the memDC
-    RECT sidebarRect = { rect.right - 100, 0, rect.right, rect.bottom };
-    HBRUSH hSidebarBrush = CreateSolidBrush(RGB(240, 240, 240));
-    FillRect(memDC, &sidebarRect, hSidebarBrush);
-    DeleteObject(hSidebarBrush);
+    // RECT sidebarRect = { rect.right - 100, 0, rect.right, rect.bottom };
+    // HBRUSH hSidebarBrush = CreateSolidBrush(RGB(240, 240, 240));
+    // FillRect(memDC, &sidebarRect, hSidebarBrush);
+    // DeleteObject(hSidebarBrush);
 
     // 5. Draw the Text and Cursors on the memDC
     // (Update DrawTextWithCursors to accept the DC it should draw on)
@@ -163,13 +169,16 @@ LRESULT wm_paint_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     DeleteObject(memBitmap);
     DeleteDC(memDC);
     EndPaint(hwnd, &ps);
+    update_editor_layout(hwnd);
     return 0;
 }
 
 LRESULT wm_timer_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (wParam == ID_CURSOR_TIMER) {
-        cursorVisible = !cursorVisible; // Toggle visibility
-        InvalidateRect(hwnd, NULL, FALSE); // Trigger a repaint
+        if (cursor_active) {
+            cursorVisible = !cursorVisible; // Toggle visibility
+            InvalidateRect(hwnd, NULL, FALSE); // Trigger a repaint
+        }
     }
     return 0;
 }
@@ -199,7 +208,7 @@ LRESULT wm_char_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (wParam >= 32 && wParam <= 126) { // ASCII range for printable characters
         cursorVisible = 1; // Force cursor to show immediately when typing
         char character = (char)wParam;
-        InsertTextAtCursor(character);
+        // InsertTextAtCursor(character);
         InvalidateRect(hwnd, NULL, FALSE);
         // Optional: Reset timer here so it doesn't blink out mid-type
         SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
@@ -216,12 +225,15 @@ LRESULT wm_lbuttondown_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     POINT pt = {LOWORD(lParam), HIWORD(lParam)};
     int xPos = GET_X_LPARAM(lParam);
     int yPos = GET_Y_LPARAM(lParam);
-    // For simplicity, set cursor to the end of the text
-    if (cursorCount < MAX_CURSORS) {
-        cursors[cursorCount++].position = strlen(textBuffer); // Simple click handler
-        InvalidateRect(hwnd, NULL, FALSE);
-    }
+    InvalidateRect(hwnd, NULL, FALSE);
     printf("Cursor coords: (x = %d, y = %d)\n", xPos, yPos);
+    return 1;
+}
+
+LRESULT wm_mousewheel_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    int16_t wheel_rot = (int16_t)HIWORD(wParam);
+    int virt_keys = LOWORD(wParam);
+    printf("Wheel scrolling: %d, virtual keys: 0x%X)\n", wheel_rot, virt_keys);
     return 1;
 }
 
@@ -235,6 +247,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         case WM_TIMER: {
             return wm_timer_cb(hwnd, uMsg, wParam, lParam);
+        }
+        case WM_MOUSEWHEEL: {
+            return wm_mousewheel_cb(hwnd, uMsg, wParam, lParam);
         }
         case WM_SETCURSOR: {
             if (wm_setcursor_cb(hwnd, uMsg, wParam, lParam)) {
@@ -259,16 +274,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-void InsertTextAtCursor(char character) {
-    for (int i = 0; i < cursorCount; i++) {
-        int pos = cursors[i].position;
-        if (strlen(textBuffer) < BUFFER_SIZE - 1) { // Check buffer size before inserting
-            // Shift text to the right from the cursor position
-            memmove(&textBuffer[pos + 1], &textBuffer[pos], strlen(textBuffer) - pos + 1);
-            textBuffer[pos] = character; // Insert the character
-        }
-    }
-}
+// void InsertTextAtCursor(char character) {
+//     for (int i = 0; i < cursorCount; i++) {
+//         int pos = cursors[i].position;
+//         if (strlen(textBuffer) < BUFFER_SIZE - 1) { // Check buffer size before inserting
+//             // Shift text to the right from the cursor position
+//             memmove(&textBuffer[pos + 1], &textBuffer[pos], strlen(textBuffer) - pos + 1);
+//             textBuffer[pos] = character; // Insert the character
+//         }
+//     }
+// }
 
 void DrawTextWithCursors(HDC hdc) {
     // Select our custom font and save the old one (standard GDI rule)
@@ -277,52 +292,70 @@ void DrawTextWithCursors(HDC hdc) {
     TEXTMETRIC tm;
     GetTextMetrics(hdc, &tm);
 
+    int text_height = tm.tmHeight;
+    int text_left_offset = 10;
+    int text_top_offset = 10;
+    
     int startX = 10;
     int startY = 10;
+    int win_height = window_layout.win_height_char;
+    int win_width = window_layout.win_width_char;
+    printf("Text height: %d px, window height: %d lines, window width: %d lines\n", text_height, win_height, win_width);
+
+    if (win_height > 0) {
+        // for (int i=0; i<win_height; i++) {
+        //     // fs_nav_tabs[tab_idx]
+        //     int offset = fs_nav_tabs[current_tab].first_line;
+        //     char *text = fs_nav_tabs[current_tab].entries[offset+i].name;
+        //     printf("Writing %s at %d\n", text, i);
+        //     // TextOut(hdc, text_left_offset, text_top_offset + (win_height * i), text, (int)strlen(text));
+        // }
+        
+        // Draw the current text
+        TextOut(hdc, text_left_offset, text_top_offset, textBuffer, (int)strlen(textBuffer));
+        TextOut(hdc, text_left_offset, text_top_offset+text_height, textBuffer, (int)strlen(textBuffer));
     
-    // Draw the current text
-    TextOut(hdc, startX, startY, textBuffer, (int)strlen(textBuffer));
-
-    if (cursorVisible) {    // Draw cursors
-        for (int i = 0; i < cursorCount; i++) {
-            SIZE size;
-            int pos = cursors[i].position;
-            
-            // Measure width up to the cursor
-            GetTextExtentPoint32(hdc, textBuffer, pos, &size);
-
-            int cursorX = startX + size.cx;
-            
-            // Use the font metrics for the Y coordinates:
-            // Top: startY
-            // Bottom: startY + height of the font
-            MoveToEx(hdc, cursorX, startY, NULL);
-            LineTo(hdc, cursorX, startY + tm.tmHeight); 
+        if (cursorVisible) {    // Draw cursors
+            for (int i = 0; i < cursorCount; i++) {
+                SIZE size;
+                int pos = cursors[i].position;
+                
+                // Measure width up to the cursor
+                GetTextExtentPoint32(hdc, textBuffer, pos, &size);
+    
+                int cursorX = text_left_offset + size.cx;
+                
+                // Use the font metrics for the Y coordinates:
+                // Top: startY
+                // Bottom: startY + height of the font
+                MoveToEx(hdc, cursorX, startY, NULL);
+                LineTo(hdc, cursorX, startY + tm.tmHeight); 
+            }
         }
     }
+
     SelectObject(hdc, hOldFont);
 }
 
-window_layout_t get_editor_layout(HWND hwnd) {
-    window_layout_t layout;
+void update_editor_layout(HWND hwnd) {
+    // printf("Updating editor layout");
     RECT rect;
     GetClientRect(hwnd, &rect);
-    layout.win_width_px = rect.right - rect.left;
-    layout.win_height_px = rect.bottom - rect.top;
+    window_layout.win_width_px = rect.right - rect.left;
+    window_layout.win_height_px = rect.bottom - rect.top;
 
     HDC hdc = GetDC(hwnd);
     HFONT hOldFont = (HFONT)SelectObject(hdc, hEditorFont);
     TEXTMETRIC tm;
     GetTextMetrics(hdc, &tm);
     
-    layout.char_width = tm.tmAveCharWidth;
-    layout.char_height = tm.tmHeight;
-    layout.win_width_char = layout.win_width_px / tm.tmAveCharWidth;
-    layout.win_height_char = layout.win_height_px / tm.tmHeight;
+    window_layout.char_width_px = tm.tmAveCharWidth;
+    window_layout.char_height_px = tm.tmHeight;
+    window_layout.win_width_char = window_layout.win_width_px / tm.tmAveCharWidth;
+    window_layout.win_height_char = window_layout.win_height_px / tm.tmHeight;
 
     SelectObject(hdc, hOldFont);
     ReleaseDC(hwnd, hdc);
-    return layout;
 }
 
 void update_editor_font(void) {
