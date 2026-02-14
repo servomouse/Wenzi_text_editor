@@ -40,7 +40,7 @@ window_layout_t window_layout;
 int cursor_active = 0;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-void DrawTextWithCursors(HDC hdc);
+void draw_text(HDC hdc);
 // void InsertTextAtCursor(char character);
 void update_editor_layout(HWND hwnd);
 void update_editor_font(void);
@@ -137,35 +137,28 @@ LRESULT wm_paint_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hwnd, &ps);
 
-    // 1. Get dimensions
+    // Get dimensions
     RECT rect;
     GetClientRect(hwnd, &rect);
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
 
-    // 2. Create the "Invisible Canvas" (Back Buffer)
+    // Create the "Invisible Canvas" (Back Buffer)
     HDC memDC = CreateCompatibleDC(hdc);
     HBITMAP memBitmap = CreateCompatibleBitmap(hdc, width, height);
     SelectObject(memDC, memBitmap);
 
-    // 3. Clear the background on the memDC
+    // Clear the background on the memDC
     HBRUSH hBackground = (HBRUSH)(COLOR_WINDOW + 1);
     FillRect(memDC, &rect, hBackground);
 
-    // 4. Draw the Minimap on the memDC
-    // RECT sidebarRect = { rect.right - 100, 0, rect.right, rect.bottom };
-    // HBRUSH hSidebarBrush = CreateSolidBrush(RGB(240, 240, 240));
-    // FillRect(memDC, &sidebarRect, hSidebarBrush);
-    // DeleteObject(hSidebarBrush);
+    // Draw the Text on the memDC
+    draw_text(memDC);
 
-    // 5. Draw the Text and Cursors on the memDC
-    // (Update DrawTextWithCursors to accept the DC it should draw on)
-    DrawTextWithCursors(memDC);
-
-    // 6. "Flip" the buffer: Copy from memory to the screen
+    // "Flip" the buffer: Copy from memory to the screen
     BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
 
-    // 7. Cleanup
+    // Cleanup
     DeleteObject(memBitmap);
     DeleteDC(memDC);
     EndPaint(hwnd, &ps);
@@ -239,18 +232,12 @@ LRESULT wm_mousewheel_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
-        case WM_DESTROY: {
-            return wm_destroy_cb(hwnd, uMsg, wParam, lParam);
-        }
-        case WM_PAINT: {
-            return wm_paint_cb(hwnd, uMsg, wParam, lParam);
-        }
-        case WM_TIMER: {
-            return wm_timer_cb(hwnd, uMsg, wParam, lParam);
-        }
-        case WM_MOUSEWHEEL: {
-            return wm_mousewheel_cb(hwnd, uMsg, wParam, lParam);
-        }
+        case WM_DESTROY:        return wm_destroy_cb(hwnd, uMsg, wParam, lParam);
+        case WM_PAINT:          return wm_paint_cb(hwnd, uMsg, wParam, lParam);
+        case WM_TIMER:          return wm_timer_cb(hwnd, uMsg, wParam, lParam);
+        case WM_MOUSEWHEEL:     return wm_mousewheel_cb(hwnd, uMsg, wParam, lParam);
+        case WM_ERASEBKGND:     return wm_erasebkgnd_cb(hwnd, uMsg, wParam, lParam);
+        case WM_LBUTTONDOWN:    return wm_lbuttondown_cb(hwnd, uMsg, wParam, lParam);
         case WM_SETCURSOR: {
             if (wm_setcursor_cb(hwnd, uMsg, wParam, lParam)) {
                 return 1;
@@ -263,29 +250,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
             break;
         }
-        case WM_ERASEBKGND: {
-            return wm_erasebkgnd_cb(hwnd, uMsg, wParam, lParam);
-        }
-        case WM_LBUTTONDOWN: {
-            return wm_lbuttondown_cb(hwnd, uMsg, wParam, lParam);
-        }
+        // default: // There are quite a lot of unknown uMsgs, ignore them
+        //     printf("Error: Unknown uMsg: %d\n", uMsg);
     }
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-// void InsertTextAtCursor(char character) {
-//     for (int i = 0; i < cursorCount; i++) {
-//         int pos = cursors[i].position;
-//         if (strlen(textBuffer) < BUFFER_SIZE - 1) { // Check buffer size before inserting
-//             // Shift text to the right from the cursor position
-//             memmove(&textBuffer[pos + 1], &textBuffer[pos], strlen(textBuffer) - pos + 1);
-//             textBuffer[pos] = character; // Insert the character
-//         }
-//     }
-// }
-
-void DrawTextWithCursors(HDC hdc) {
+void draw_text(HDC hdc) {
     // Select our custom font and save the old one (standard GDI rule)
     HFONT hOldFont = (HFONT)SelectObject(hdc, hEditorFont);
 
@@ -303,35 +275,8 @@ void DrawTextWithCursors(HDC hdc) {
     printf("Text height: %d px, window height: %d lines, window width: %d lines\n", text_height, win_height, win_width);
 
     if (win_height > 0) {
-        // for (int i=0; i<win_height; i++) {
-        //     // fs_nav_tabs[tab_idx]
-        //     int offset = fs_nav_tabs[current_tab].first_line;
-        //     char *text = fs_nav_tabs[current_tab].entries[offset+i].name;
-        //     printf("Writing %s at %d\n", text, i);
-        //     // TextOut(hdc, text_left_offset, text_top_offset + (win_height * i), text, (int)strlen(text));
-        // }
-        
-        // Draw the current text
         TextOut(hdc, text_left_offset, text_top_offset, textBuffer, (int)strlen(textBuffer));
         TextOut(hdc, text_left_offset, text_top_offset+text_height, textBuffer, (int)strlen(textBuffer));
-    
-        if (cursorVisible) {    // Draw cursors
-            for (int i = 0; i < cursorCount; i++) {
-                SIZE size;
-                int pos = cursors[i].position;
-                
-                // Measure width up to the cursor
-                GetTextExtentPoint32(hdc, textBuffer, pos, &size);
-    
-                int cursorX = text_left_offset + size.cx;
-                
-                // Use the font metrics for the Y coordinates:
-                // Top: startY
-                // Bottom: startY + height of the font
-                MoveToEx(hdc, cursorX, startY, NULL);
-                LineTo(hdc, cursorX, startY + tm.tmHeight); 
-            }
-        }
     }
 
     SelectObject(hdc, hOldFont);
