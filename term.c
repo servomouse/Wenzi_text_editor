@@ -91,6 +91,16 @@ fs_buffer_t * fs_walker_get_current_buf(void) {
         return NULL;
 }
 
+void fs_walker_scroll(int steps) {
+    fs_buffer_t *cb = fs_walker_get_current_buf();
+    int temp_pos = cb->top_line + steps;
+    if (temp_pos < 0)
+        temp_pos = 0;
+    else if (temp_pos >= cb->num_lines)
+        temp_pos = cb->num_lines - 1;
+    cb->top_line = (uint32_t)temp_pos;
+}
+
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 #define MAX_CURSORS 5
@@ -324,9 +334,12 @@ LRESULT wm_lbuttondown_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 LRESULT wm_mousewheel_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    int16_t wheel_rot = (int16_t)HIWORD(wParam);
-    int virt_keys = LOWORD(wParam);
-    printf("Wheel scrolling: %d, virtual keys: 0x%X)\n", wheel_rot, virt_keys);
+    int wheel_step = 120;
+    int16_t wheel_rot = (int16_t)HIWORD(wParam) / wheel_step;
+    // int virt_keys = LOWORD(wParam);
+    // printf("Wheel scrolling: %d, virtual keys: 0x%X)\n", wheel_rot, virt_keys);
+    fs_walker_scroll(-1 * wheel_rot);
+    InvalidateRect(hwnd, NULL, FALSE);
     return 1;
 }
 
@@ -385,19 +398,14 @@ void draw_text(HDC hdc) {
             num_lines_to_display = win_height;
         }
         printf("Num lines to display: %d\n", num_lines_to_display);
-        printf("Lines buffer: %p\n", buf->lines);
-        // for(int i=0; i<num_lines_to_display; i++) {
-        //     char *line = buf->lines[buf->top_line+i];
-        //     printf("Displaying line: %p\n", line);
-        // }
         for(int i=0; i<num_lines_to_display; i++) {
             char *line = buf->lines[buf->top_line+i];
-            printf("Displaying line: %p\n", line);
+            // printf("Displaying line: %p\n", line);
             uint32_t line_len = strlen(line);
             if (line_len > win_width) {
                 line_len = win_width;
             }
-            printf("Displaying line: %s\n", line);
+            // printf("Displaying line: %s\n", line);
             TextOut(hdc, text_left_offset, text_top_offset+(text_height*i), line, (int)line_len);
         }
     }
