@@ -22,6 +22,7 @@ typedef struct {
 } Cursor;
 
 typedef struct {
+    int is_initialized;
     int win_width_px;
     int win_height_px;
     int win_width_char;
@@ -261,6 +262,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 }
 
 void draw_text(HDC hdc) {
+    if (!window_layout.is_initialized) return;
+
     // Select our custom font and save the old one (standard GDI rule)
     HFONT hOldFont = (HFONT)SelectObject(hdc, hEditorFont);
 
@@ -269,16 +272,17 @@ void draw_text(HDC hdc) {
 
     int text_height = tm.tmHeight;
     int text_left_offset = window_layout.char_width_px;
-    int text_top_offset = window_layout.char_height_px;
+    int text_top_offset = window_layout.char_width_px;
 
-    int win_height = window_layout.win_height_char;
+    int win_height = (window_layout.win_height_px - text_top_offset)/ window_layout.char_height_px;
     int win_width = window_layout.win_width_char;
     printf("Text height: %d px, window height: %d lines, window width: %d lines\n", text_height, win_height, win_width);
 
-    if (win_height > 0) {
-        TextOut(hdc, text_left_offset, text_top_offset, textBuffer, (int)strlen(textBuffer));
-        TextOut(hdc, text_left_offset, text_top_offset+text_height, textBuffer, (int)strlen(textBuffer));
-    }
+    // if (win_height > 0) {
+        for(int i=0; i<win_height; i++) {
+            TextOut(hdc, text_left_offset, text_top_offset+(text_height*i), textBuffer, (int)strlen(textBuffer));
+        }
+    // }
 
     SelectObject(hdc, hOldFont);
 }
@@ -299,6 +303,8 @@ void update_editor_layout(HWND hwnd) {
     window_layout.char_height_px = tm.tmHeight;
     window_layout.win_width_char = window_layout.win_width_px / tm.tmAveCharWidth;
     window_layout.win_height_char = window_layout.win_height_px / tm.tmHeight;
+
+    window_layout.is_initialized = 1;
 
     SelectObject(hdc, hOldFont);
     ReleaseDC(hwnd, hdc);
