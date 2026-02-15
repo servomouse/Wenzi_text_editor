@@ -5,6 +5,91 @@
 #include <string.h>
 #include <stdint.h>
 
+typedef struct {
+    char **lines;
+    uint32_t num_lines;
+    uint32_t top_line;
+    uint32_t cursor_position;
+} fs_buffer_t;
+
+typedef struct {
+    fs_buffer_t *bufs;
+    uint32_t num_buffers;
+    int current_buffer_idx;
+} fs_walker_t;
+
+fs_walker_t fs_walker = {
+    .bufs = NULL,
+    .num_buffers = 0,
+    .current_buffer_idx = -1
+};
+
+uint32_t random_int(uint32_t min, uint32_t max) {
+    return (rand() % (max - min + 1)) + min;
+}
+
+void generate_random_string(char *str, int num_elements) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-_ ";
+    int charset_size = sizeof(charset) - 1;
+
+    for (int i = 0; i < num_elements; i++) {
+        int key = rand() % charset_size;
+        str[i] = charset[key];
+    }
+    str[num_elements] = '\0';
+}
+
+uint32_t fs_walker_add_buffer(void) {
+    // Creates new fs_buffer and returns its idx
+    uint32_t new_buf_idx = fs_walker.num_buffers;
+    if (fs_walker.current_buffer_idx == -1) {
+        fs_walker.bufs = calloc(1, sizeof(fs_buffer_t));
+        fs_walker.current_buffer_idx = 0;
+    } else {
+        fs_walker.bufs = realloc(fs_walker.bufs, sizeof(fs_buffer_t) * fs_walker.num_buffers+1);
+    }
+    fs_walker.num_buffers++;
+    fs_walker.bufs[new_buf_idx].lines = NULL;
+    fs_walker.bufs[new_buf_idx].num_lines = 0;
+    fs_walker.bufs[new_buf_idx].top_line = 0;
+    fs_walker.bufs[new_buf_idx].cursor_position = 0;
+    return new_buf_idx;
+}
+
+void fs_walker_update_buf(uint32_t buf_idx) {
+    if(fs_walker.bufs[buf_idx].lines) {
+        for(size_t i=0; i<fs_walker.bufs[buf_idx].num_lines; i++) {
+            free(fs_walker.bufs[buf_idx].lines[i]);
+        }
+        free(fs_walker.bufs[buf_idx].lines);
+    }
+    uint32_t num_lines = random_int(0, 64);
+    fs_walker.bufs[buf_idx].num_lines = num_lines;
+    fs_walker.bufs[buf_idx].cursor_position = 0;
+    fs_walker.bufs[buf_idx].lines = calloc(num_lines, sizeof(char*));
+    for(size_t i=0; i<num_lines; i++) {
+        fs_walker.bufs[buf_idx].lines[i] = calloc(MAX_PATH, sizeof(char));
+        generate_random_string(fs_walker.bufs[buf_idx].lines[i], random_int(10, 100));
+        // printf("Generated line: %s\n", fs_walker.bufs[buf_idx].lines[i]);
+    }
+}
+
+void fs_walker_switch_to_buf(uint32_t buf_idx) {
+    if (buf_idx < fs_walker.num_buffers) {
+        printf("Switching to buffer %d\n", buf_idx);
+        fs_walker.current_buffer_idx = buf_idx;
+        fs_walker_update_buf(buf_idx);
+    } else {
+        fprintf(stderr, "Error: Trying to switch to a non-existent buffer %d (number of buffers: %d)\n", buf_idx, fs_walker.num_buffers);
+    }
+}
+
+fs_buffer_t * fs_walker_get_current_buf(void) {
+    if (fs_walker.num_buffers > 0)
+        return &fs_walker.bufs[fs_walker.current_buffer_idx];
+    else
+        return NULL;
+}
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
@@ -73,8 +158,18 @@ void handle_arguments(char *cmdline_args) {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     // lpCmdLine is all the command line arguments as a single string
     // CreateConsole();
+    freopen("CONOUT$", "w", stderr);    // Make stderr work
+    setvbuf(stderr, NULL, _IONBF, 0);   // Disable stderr cache
+    // setvbuf(stdout, NULL, _IONBF, 0);   // Disable stdout cache
+    fprintf(stderr, "STDERR output test\n");
     
     handle_arguments(lpCmdLine);
+    srand(42);
+
+    fs_walker_add_buffer();
+    fs_walker_switch_to_buf(0);
+
+
     const char CLASS_NAME[] = "CustomTextEditor";
 
     WNDCLASS wc = {0};
@@ -103,7 +198,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return -1;
     }
     update_editor_font();
-    SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
+    // SetTimer(hwnd, ID_CURSOR_TIMER, 500, NULL);
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
@@ -128,6 +223,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 }
 
 LRESULT wm_destroy_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    printf("wm_destroy_cb()\n");
     if (hEditorFont)
         DeleteObject(hEditorFont);
     PostQuitMessage(0);
@@ -201,7 +297,7 @@ LRESULT wm_setcursor_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 LRESULT wm_char_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (wParam >= 32 && wParam <= 126) { // ASCII range for printable characters
         cursorVisible = 1; // Force cursor to show immediately when typing
-        char character = (char)wParam;
+        // char character = (char)wParam;
         // InsertTextAtCursor(character);
         InvalidateRect(hwnd, NULL, FALSE);
         // Optional: Reset timer here so it doesn't blink out mid-type
@@ -216,7 +312,7 @@ LRESULT wm_erasebkgnd_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 LRESULT wm_lbuttondown_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    POINT pt = {LOWORD(lParam), HIWORD(lParam)};
+    // POINT pt = {LOWORD(lParam), HIWORD(lParam)};
     int xPos = GET_X_LPARAM(lParam);
     int yPos = GET_Y_LPARAM(lParam);
     InvalidateRect(hwnd, NULL, FALSE);
@@ -271,19 +367,41 @@ void draw_text(HDC hdc) {
     GetTextMetrics(hdc, &tm);
 
     int text_height = tm.tmHeight;
-    int text_left_offset = window_layout.char_width_px;
     int text_top_offset = window_layout.char_width_px;
-
+    
     int win_height = (window_layout.win_height_px - text_top_offset)/ window_layout.char_height_px;
-    int win_width = window_layout.win_width_char;
+    int win_width = window_layout.win_width_char - 1;
     printf("Text height: %d px, window height: %d lines, window width: %d lines\n", text_height, win_height, win_width);
-
-    // if (win_height > 0) {
-        for(int i=0; i<win_height; i++) {
-            TextOut(hdc, text_left_offset, text_top_offset+(text_height*i), textBuffer, (int)strlen(textBuffer));
-        }
+    
+    int text_left_offset = window_layout.char_width_px;
+    // for(int i=0; i<win_height; i++) {
+    //     TextOut(hdc, text_left_offset, text_top_offset+(text_height*i), textBuffer, (int)strlen(textBuffer));
     // }
 
+    fs_buffer_t * buf = fs_walker_get_current_buf();
+    if (buf) {
+        uint32_t num_lines_to_display = buf->num_lines - buf->top_line;
+        if (num_lines_to_display > win_height) {
+            num_lines_to_display = win_height;
+        }
+        printf("Num lines to display: %d\n", num_lines_to_display);
+        printf("Lines buffer: %p\n", buf->lines);
+        // for(int i=0; i<num_lines_to_display; i++) {
+        //     char *line = buf->lines[buf->top_line+i];
+        //     printf("Displaying line: %p\n", line);
+        // }
+        for(int i=0; i<num_lines_to_display; i++) {
+            char *line = buf->lines[buf->top_line+i];
+            printf("Displaying line: %p\n", line);
+            uint32_t line_len = strlen(line);
+            if (line_len > win_width) {
+                line_len = win_width;
+            }
+            printf("Displaying line: %s\n", line);
+            TextOut(hdc, text_left_offset, text_top_offset+(text_height*i), line, (int)line_len);
+        }
+    }
+        
     SelectObject(hdc, hOldFont);
 }
 
