@@ -343,6 +343,39 @@ LRESULT wm_mousewheel_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return 1;
 }
 
+LRESULT wm_control_key_cb(uint32_t is_key_down, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    // printf("wParam value: 0x%llXd\n", wParam);
+    switch(wParam) {
+        case VK_UP:     // Arrow Up
+            if(is_key_down)
+                printf("Key pressed: Arrow Up\n");
+            else
+                printf("Key released: Arrow Up\n");
+            break;
+        case VK_RIGHT:     // Arrow Right
+            if(is_key_down)
+                printf("Key pressed: Arrow Right\n");
+            else
+                printf("Key released: Arrow Right\n");
+            break;
+        case VK_DOWN:     // Arrow Down
+            if(is_key_down)
+                printf("Key pressed: Arrow Down\n");
+            else
+                printf("Key released: Arrow Down\n");
+            break;
+        case VK_LEFT:     // Arrow Left
+            if(is_key_down)
+                printf("Key pressed: Arrow Left\n");
+            else
+                printf("Key released: Arrow Left\n");
+            break;
+        default:
+            printf("Unknown key: 0x%llXd\n", wParam);
+    }
+    return 1;
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_DESTROY:        return wm_destroy_cb(hwnd, uMsg, wParam, lParam);
@@ -351,6 +384,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         case WM_MOUSEWHEEL:     return wm_mousewheel_cb(hwnd, uMsg, wParam, lParam);
         case WM_ERASEBKGND:     return wm_erasebkgnd_cb(hwnd, uMsg, wParam, lParam);
         case WM_LBUTTONDOWN:    return wm_lbuttondown_cb(hwnd, uMsg, wParam, lParam);
+        case WM_KEYDOWN:        return wm_control_key_cb(1, hwnd, uMsg, wParam, lParam);
+        case WM_KEYUP:          return wm_control_key_cb(0, hwnd, uMsg, wParam, lParam);
         case WM_SETCURSOR: {
             if (wm_setcursor_cb(hwnd, uMsg, wParam, lParam)) {
                 return 1;
@@ -364,7 +399,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             break;
         }
         // default: // There are quite a lot of unknown uMsgs, ignore them
-        //     printf("Error: Unknown uMsg: %d\n", uMsg);
+        //     printf("Error: Unknown uMsg: 0x%Xd\n", uMsg);
     }
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -406,7 +441,22 @@ void draw_text(HDC hdc) {
                 line_len = win_width;
             }
             // printf("Displaying line: %s\n", line);
+            COLORREF previousColor;
+            COLORREF previousBkColor;
+            int previousBkMode;
+            if (i == 3) {
+                previousColor = SetTextColor(hdc, RGB(255, 0, 0));
+                previousBkColor = SetBkColor(hdc, RGB(255, 255, 0));
+                // Ensure the background mode is OPAQUE (the default, but good practice to ensure)
+                previousBkMode = SetBkMode(hdc, OPAQUE);
+            }
+            // LPCWSTR text = L"This text is red.";
             TextOut(hdc, text_left_offset, text_top_offset+(text_height*i), line, (int)line_len);
+            if (i == 3) {
+                SetTextColor(hdc, previousColor);
+                SetBkColor(hdc, previousBkColor);
+                SetBkMode(hdc, previousBkMode);
+            }
         }
     }
         
