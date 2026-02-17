@@ -5,11 +5,38 @@
 #include <string.h>
 #include <stdint.h>
 
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
+#define MAX_CURSORS 5
+#define BUFFER_SIZE 1024
+#define ID_CURSOR_TIMER 1
+#define MINIMAP_WIDTH 100
+#define MAX_ARGS 10
+#define ARG_LENGTH 100
+
+// TODO: Add Gutter
+
+typedef struct {
+    int position; // Position of the cursor in the text buffer
+} Cursor;
+
+typedef struct {
+    int is_initialized;
+    int win_width_px;
+    int win_height_px;
+    int win_width_char;
+    int win_height_char;
+    int char_width_px;
+    int char_height_px;
+} window_layout_t;
+
+window_layout_t window_layout;
+
 typedef struct {
     char **lines;
     uint32_t num_lines;
     uint32_t top_line;
-    uint32_t cursor_position;
+    int selected_line;  // -1 for no selection
 } fs_buffer_t;
 
 typedef struct {
@@ -52,7 +79,7 @@ uint32_t fs_walker_add_buffer(void) {
     fs_walker.bufs[new_buf_idx].lines = NULL;
     fs_walker.bufs[new_buf_idx].num_lines = 0;
     fs_walker.bufs[new_buf_idx].top_line = 0;
-    fs_walker.bufs[new_buf_idx].cursor_position = 0;
+    fs_walker.bufs[new_buf_idx].selected_line = -1;
     return new_buf_idx;
 }
 
@@ -65,7 +92,7 @@ void fs_walker_update_buf(uint32_t buf_idx) {
     }
     uint32_t num_lines = random_int(0, 64);
     fs_walker.bufs[buf_idx].num_lines = num_lines;
-    fs_walker.bufs[buf_idx].cursor_position = 0;
+    fs_walker.bufs[buf_idx].selected_line = -1;
     fs_walker.bufs[buf_idx].lines = calloc(num_lines, sizeof(char*));
     for(size_t i=0; i<num_lines; i++) {
         fs_walker.bufs[buf_idx].lines[i] = calloc(MAX_PATH, sizeof(char));
@@ -92,6 +119,7 @@ fs_buffer_t * fs_walker_get_current_buf(void) {
 }
 
 void fs_walker_scroll(int steps) {
+    // Positive scrolls down
     fs_buffer_t *cb = fs_walker_get_current_buf();
     int temp_pos = cb->top_line + steps;
     if (temp_pos < 0)
@@ -101,30 +129,32 @@ void fs_walker_scroll(int steps) {
     cb->top_line = (uint32_t)temp_pos;
 }
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define MAX_CURSORS 5
-#define BUFFER_SIZE 1024
-#define ID_CURSOR_TIMER 1
-#define MINIMAP_WIDTH 100
-#define MAX_ARGS 10
-#define ARG_LENGTH 100
-
-// TODO: Add Gutter
-
-typedef struct {
-    int position; // Position of the cursor in the text buffer
-} Cursor;
-
-typedef struct {
-    int is_initialized;
-    int win_width_px;
-    int win_height_px;
-    int win_width_char;
-    int win_height_char;
-    int char_width_px;
-    int char_height_px;
-} window_layout_t;
+void fs_walker_move_selected_line(int steps) {
+    fs_buffer_t *cb = fs_walker_get_current_buf();
+    if (steps == INT_MAX) {
+        cb->selected_line = cb->num_lines-1;
+        fs_walker_scroll(cb->num_lines - (window_layout.win_height_char - 1));
+    } else if (steps == INT_MIN) {
+        cb->selected_line = 0;
+        cb->top_line = 0;
+    } else {
+        int temp_pos = cb->selected_line + steps;
+        if (temp_pos < 0) temp_pos = 0;
+        else if (temp_pos >= cb->num_lines) temp_pos = cb->num_lines-1;
+        cb->selected_line = temp_pos;
+    }
+    if (cb->selected_line < cb->top_line) {
+        cb->top_line = cb->selected_line;
+    } else if (cb->selected_line >= (cb->top_line + window_layout.win_height_char - 1)) {
+        int delta = cb->selected_line - (window_layout.win_height_char - 2) - cb->top_line;
+        fs_walker_scroll(delta);
+        printf("[INFO] Selected line is too low: selected_line: %d; top_line: %d; win_height: %d; delta: %d\n",
+            cb->selected_line,
+            cb->top_line,
+            window_layout.win_height_char,
+            delta);
+    }
+}
 
 char textBuffer[BUFFER_SIZE]; // Simple text buffer
 Cursor cursors[MAX_CURSORS]; // Array to store cursor positions
@@ -132,7 +162,6 @@ int cursorCount = 1; // Start with one cursor at position 0
 int cursorVisible = 1; // 1 for visible, 0 for hidden
 HFONT hEditorFont = NULL;
 int fontSize = 20; // Default height in pixels
-window_layout_t window_layout;
 int cursor_active = 0;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -345,11 +374,14 @@ LRESULT wm_mousewheel_cb(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 LRESULT wm_control_key_cb(uint32_t is_key_down, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     // printf("wParam value: 0x%llXd\n", wParam);
+    int need_redraw = 0;
     switch(wParam) {
         case VK_UP:     // Arrow Up
-            if(is_key_down)
-                printf("Key pressed: Arrow Up\n");
-            else
+            if(is_key_down) {
+                fs_walker_move_selected_line(-1);
+                need_redraw = 1;
+                // printf("Key pressed: Arrow Up\n");
+            } else
                 printf("Key released: Arrow Up\n");
             break;
         case VK_RIGHT:     // Arrow Right
@@ -359,9 +391,11 @@ LRESULT wm_control_key_cb(uint32_t is_key_down, HWND hwnd, UINT uMsg, WPARAM wPa
                 printf("Key released: Arrow Right\n");
             break;
         case VK_DOWN:     // Arrow Down
-            if(is_key_down)
-                printf("Key pressed: Arrow Down\n");
-            else
+            if(is_key_down){
+                fs_walker_move_selected_line(1);
+                need_redraw = 1;
+                // printf("Key pressed: Arrow Down\n");
+            } else
                 printf("Key released: Arrow Down\n");
             break;
         case VK_LEFT:     // Arrow Left
@@ -372,6 +406,9 @@ LRESULT wm_control_key_cb(uint32_t is_key_down, HWND hwnd, UINT uMsg, WPARAM wPa
             break;
         default:
             printf("Unknown key: 0x%llXd\n", wParam);
+    }
+    if (need_redraw) {
+        InvalidateRect(hwnd, NULL, FALSE);
     }
     return 1;
 }
@@ -419,7 +456,7 @@ void draw_text(HDC hdc) {
     
     int win_height = (window_layout.win_height_px - text_top_offset)/ window_layout.char_height_px;
     int win_width = window_layout.win_width_char - 1;
-    printf("Text height: %d px, window height: %d lines, window width: %d lines\n", text_height, win_height, win_width);
+    // printf("Text height: %d px, window height: %d lines, window width: %d lines\n", text_height, win_height, win_width);
     
     int text_left_offset = window_layout.char_width_px;
     // for(int i=0; i<win_height; i++) {
@@ -432,27 +469,27 @@ void draw_text(HDC hdc) {
         if (num_lines_to_display > win_height) {
             num_lines_to_display = win_height;
         }
-        printf("Num lines to display: %d\n", num_lines_to_display);
+        // printf("Num lines to display: %d\n", num_lines_to_display);
         for(int i=0; i<num_lines_to_display; i++) {
-            char *line = buf->lines[buf->top_line+i];
-            // printf("Displaying line: %p\n", line);
+            size_t idx = buf->top_line+i;
+            uint32_t is_selected_line = idx == buf->selected_line? 1: 0;
+            char *line = buf->lines[idx];
             uint32_t line_len = strlen(line);
             if (line_len > win_width) {
                 line_len = win_width;
             }
-            // printf("Displaying line: %s\n", line);
+
             COLORREF previousColor;
             COLORREF previousBkColor;
             int previousBkMode;
-            if (i == 3) {
+            if (is_selected_line) {
                 previousColor = SetTextColor(hdc, RGB(255, 0, 0));
                 previousBkColor = SetBkColor(hdc, RGB(255, 255, 0));
                 // Ensure the background mode is OPAQUE (the default, but good practice to ensure)
                 previousBkMode = SetBkMode(hdc, OPAQUE);
             }
-            // LPCWSTR text = L"This text is red.";
             TextOut(hdc, text_left_offset, text_top_offset+(text_height*i), line, (int)line_len);
-            if (i == 3) {
+            if (is_selected_line) {
                 SetTextColor(hdc, previousColor);
                 SetBkColor(hdc, previousBkColor);
                 SetBkMode(hdc, previousBkMode);
