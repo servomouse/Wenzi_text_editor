@@ -404,6 +404,22 @@ LRESULT wm_control_key_cb(uint32_t is_key_down, HWND hwnd, UINT uMsg, WPARAM wPa
             else
                 printf("Key released: Arrow Left\n");
             break;
+        case VK_HOME:
+            if(is_key_down) {
+                fs_walker_move_selected_line(INT_MIN);
+                need_redraw = 1;
+                // printf("Key pressed: Arrow Left\n");
+            } else
+                printf("Key released: Home\n");
+            break;
+        case VK_END:
+            if(is_key_down) {
+                fs_walker_move_selected_line(INT_MAX);
+                need_redraw = 1;
+                // printf("Key pressed: Arrow Left\n");
+            } else
+                printf("Key released: End\n");
+            break;
         default:
             printf("Unknown key: 0x%llXd\n", wParam);
     }
