@@ -1,9 +1,14 @@
-import pyglet   # pip install pyglet
+import pyglet
 import random
 
-# Window dimensions
+# Initial window dimensions
 WIDTH, HEIGHT = 800, 600
-window = pyglet.window.Window(width=WIDTH, height=HEIGHT, caption="Pyglet Framebuffer")
+window = pyglet.window.Window(
+    width=WIDTH, 
+    height=HEIGHT, 
+    caption="Pyglet Framebuffer with Text Overlay",
+    resizable=True
+)
 
 def generate_random_color_buffer(w, h):
     """Generates a raw bytearray filled with a single random RGB color."""
@@ -11,36 +16,67 @@ def generate_random_color_buffer(w, h):
     g = random.randint(0, 255)
     b = random.randint(0, 255)
     
-    # Create a flat array of RGB values for every single pixel
-    # Multiplying a 3-byte list by the total number of pixels
     raw_data = bytes([r, g, b] * (w * h))
-    
-    # Wrap the raw bytes into a Pyglet ImageData object
-    # 'RGB' tells it the format, and pitch is the number of bytes per row (w * 3)
     return pyglet.image.ImageData(w, h, 'RGB', raw_data)
 
-# Initialize our framebuffer with a starting color
+# Create the initial raw pixel background
 framebuffer = generate_random_color_buffer(WIDTH, HEIGHT)
+
+# Create a Pyglet Label for text overlay
+# We use a distinct color (like black) so it stands out against the background
+text_overlay = pyglet.text.Label(
+    text="Hello World",
+    font_name="Arial",
+    font_size=24,
+    color=(0, 0, 0, 255),  # RGBA format for text color (Black)
+    x=20,                  # Coordinates starting from bottom-left
+    y=HEIGHT - 50,
+    anchor_x='left', 
+    anchor_y='top'
+)
+
+def console_print(message):
+    """Prints to the terminal and reflects it onto the framebuffer."""
+    print(message)                  # Output to standard console
+    text_overlay.text = str(message) # Update the window text overlay
 
 @window.event
 def on_draw():
     window.clear()
-    # Blit the raw pixel buffer directly to the screen at coordinates (0, 0)
+    
+    # 1. Draw the raw pixel array first (Background)
     framebuffer.blit(0, 0)
+    
+    # 2. Draw the text overlay on top of the pixels
+    text_overlay.draw()
+
+@window.event
+def on_resize(width, height):
+    global framebuffer
+    # Update framebuffer dimensions
+    framebuffer = generate_random_color_buffer(width, height)
+    
+    # Reposition the text relative to the new window top edge
+    text_overlay.y = height - 50
 
 @window.event
 def on_mouse_press(x, y, button, modifiers):
     global framebuffer
-    print(f"Mouse clicked at ({x}, {y}). Generating new random color buffer!")
-    # Regenerate the raw pixel data on click
-    framebuffer = generate_random_color_buffer(WIDTH, HEIGHT)
+    framebuffer = generate_random_color_buffer(window.width, window.height)
+    
+    # Reflect the click action to both console and framebuffer
+    console_print(f"Mouse clicked at click point: ({x}, {y})")
 
 @window.event
 def on_key_press(symbol, modifiers):
-    print(f"Key pressed: {symbol}")
-    # Close window cleanly on ESC
     if symbol == pyglet.window.key.ESCAPE:
         window.close()
+    else:
+        # Reflect the key press to both console and framebuffer
+        # pyglet.window.key.symbol_string converts the key ID to a readable string (e.g., 'A', 'SPACE')
+        key_name = pyglet.window.key.symbol_string(symbol)
+        console_print(f"Key pressed: {key_name}")
 
 if __name__ == "__main__":
+    console_print("Application Started. Click or press keys!")
     pyglet.app.run()
